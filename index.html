@@ -1,0 +1,976 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>邻里步量 — 图纸比例尺测距工具</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  /* brand */
+  #brand {
+    font-size: 15px;
+    font-weight: 700;
+    color: #e0e0e0;
+    letter-spacing: 2px;
+    margin-right: 8px;
+    white-space: nowrap;
+    border-right: 1px solid #0f3460;
+    padding-right: 12px;
+  }
+  #brand .sub { font-size: 10px; color: #666; font-weight: 400; letter-spacing: 0; margin-left: 4px; }
+
+  body {
+    font-family: -apple-system, "Microsoft YaHei", sans-serif;
+    background: #1a1a2e;
+    color: #e0e0e0;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    user-select: none;
+  }
+
+  #toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    background: #16213e;
+    border-bottom: 1px solid #0f3460;
+    flex-shrink: 0;
+    flex-wrap: wrap;
+    min-height: 44px;
+  }
+
+  #toolbar button {
+    padding: 5px 14px;
+    border: 1px solid #0f3460;
+    border-radius: 4px;
+    background: #0f3460;
+    color: #ccc;
+    cursor: pointer;
+    font-size: 13px;
+    white-space: nowrap;
+    transition: background 0.15s, color 0.15s;
+  }
+  #toolbar button:hover { background: #1a4a8a; color: #fff; }
+  #toolbar button.active { background: #e94560; border-color: #e94560; color: #fff; }
+  #toolbar button:disabled { opacity: 0.35; cursor: not-allowed; }
+
+  /* mode toggle group */
+  #toolbar .mode-toggle { display: flex; gap: 0; }
+  #toolbar .mode-toggle button {
+    border-radius: 0;
+    padding: 5px 10px;
+    font-size: 12px;
+  }
+  #toolbar .mode-toggle button:first-child { border-radius: 4px 0 0 4px; }
+  #toolbar .mode-toggle button:last-child  { border-radius: 0 4px 4px 0; }
+  #toolbar .mode-toggle button.active-mode { background: #e94560; border-color: #e94560; color: #fff; }
+
+  #toolbar .sep { width: 1px; height: 22px; background: #0f3460; margin: 0 4px; }
+
+  #toolbar label { font-size: 12px; color: #888; }
+
+  #toolbar select {
+    padding: 4px 6px;
+    border-radius: 4px;
+    border: 1px solid #0f3460;
+    background: #0f3460;
+    color: #ccc;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  #toolbar input[type="number"] {
+    width: 48px;
+    padding: 4px 6px;
+    border-radius: 4px;
+    border: 1px solid #0f3460;
+    background: #0f3460;
+    color: #ccc;
+    font-size: 13px;
+    text-align: center;
+  }
+  #toolbar input[type="number"]:focus { outline: none; border-color: #e94560; }
+  #info {
+    margin-left: auto;
+    font-size: 12px;
+    color: #888;
+    display: flex;
+    gap: 16px;
+    align-items: center;
+  }
+  #info .ratio { color: #00d2ff; font-weight: 600; }
+  #info .dist { color: #e94560; font-weight: 600; }
+
+  #canvas-wrap {
+    flex: 1;
+    position: relative;
+    background: #12121f;
+    overflow: hidden;
+  }
+  canvas {
+    display: block;
+    position: absolute;
+    top: 0; left: 0;
+  }
+
+  #drop-hint {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #555;
+    font-size: 15px;
+    pointer-events: none;
+    z-index: 2;
+  }
+  #drop-hint span { color: #e94560; }
+
+  #modal-mask {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.6);
+    z-index: 100;
+    align-items: center;
+    justify-content: center;
+  }
+  #modal-mask.show { display: flex; }
+
+  #modal {
+    background: #16213e;
+    border: 1px solid #0f3460;
+    border-radius: 6px;
+    padding: 20px 24px;
+    min-width: 300px;
+  }
+  #modal h3 { font-size: 15px; margin-bottom: 12px; color: #fff; }
+  #modal .row { display: flex; gap: 8px; align-items: center; margin-bottom: 14px; }
+  #modal input {
+    flex: 1;
+    padding: 6px 10px;
+    border-radius: 4px;
+    border: 1px solid #0f3460;
+    background: #1a1a2e;
+    color: #e0e0e0;
+    font-size: 14px;
+  }
+  #modal select { padding: 4px 6px; border-radius: 4px; border: 1px solid #0f3460; background: #0f3460; color: #ccc; }
+  #modal .btns { display: flex; gap: 8px; justify-content: flex-end; }
+  #modal button {
+    padding: 6px 18px;
+    border-radius: 4px;
+    border: 1px solid #0f3460;
+    background: #0f3460;
+    color: #ccc;
+    cursor: pointer;
+  }
+  #modal button.primary { background: #e94560; border-color: #e94560; color: #fff; }
+
+  #side-panel {
+    display: none;
+    position: absolute;
+    right: 10px;
+    top: 10px;
+    width: 220px;
+    max-height: calc(100% - 20px);
+    overflow-y: auto;
+    background: rgba(22,33,62,0.92);
+    border: 1px solid #0f3460;
+    border-radius: 6px;
+    padding: 10px;
+    z-index: 10;
+    font-size: 12px;
+  }
+  #side-panel.show { display: block; }
+  #side-panel h4 { color: #00d2ff; margin-bottom: 6px; }
+  #side-panel .item {
+    display: flex;
+    justify-content: space-between;
+    padding: 4px 0;
+    border-bottom: 1px solid #0f3460;
+  }
+  #side-panel .item .val { color: #e94560; font-weight: 600; }
+  #side-panel .item .del { cursor: pointer; color: #666; margin-left: 6px; }
+  #side-panel .item .del:hover { color: #e94560; }
+
+  /* polyline vertex count badge */
+  #side-panel .item .badge { font-size: 10px; color: #888; margin-left: 4px; }
+
+  body.calibrating #canvas-wrap { cursor: crosshair; }
+  body.measuring-line  #canvas-wrap { cursor: crosshair; }
+  body.measuring-poly  #canvas-wrap { cursor: cell; }
+</style>
+</head>
+<body>
+
+<div id="toolbar">
+  <span id="brand">邻里步量<span class="sub">Neighborhood Step Measure</span></span>
+  <button id="btn-load" title="加载图纸图片">📂 加载图纸</button>
+  <span class="sep"></span>
+  <button id="btn-calibrate" disabled>📏 标定比例尺</button>
+  <button id="btn-measure" disabled>📍 测距</button>
+  <span class="mode-toggle" id="mode-toggle" style="display:none">
+    <button id="btn-mode-line" class="active-mode" title="直线测距：点击两点">直线</button>
+    <button id="btn-mode-poly" title="折线测距：依次点击顶点，双击完成">折线</button>
+  </span>
+  <span class="sep"></span>
+  <button id="btn-clear" disabled>✕ 清除测线</button>
+  <button id="btn-reset-view" disabled>⊞ 适应窗口</button>
+  <span class="sep"></span>
+  <label>单位</label>
+  <select id="sel-unit">
+    <option value="m" selected>米 (m)</option>
+    <option value="km">公里 (km)</option>
+    <option value="cm">厘米 (cm)</option>
+    <option value="mm">毫米 (mm)</option>
+    <option value="ft">英尺 (ft)</option>
+  </select>
+    <span class="sep"></span>
+    <label>步速</label>
+    <input id="walk-speed" type="number" value="5" min="1" max="15" step="0.5">
+    <label style="font-size:11px;color:#888">km/h</label>
+  <div id="info">
+    <span>比例: <span class="ratio" id="ratio-text">未标定</span></span>
+    <span>最近测距: <span class="dist" id="last-dist">—</span></span>
+  </div>
+</div>
+
+<div id="canvas-wrap">
+  <canvas id="canvas"></canvas>
+  <div id="drop-hint">将图纸图片拖放至此，或点击 <span>📂 加载图纸</span> 开始邻里步量</div>
+  <div id="side-panel"><h4>测量记录</h4><div id="measure-list"></div></div>
+</div>
+
+<input type="file" id="file-input" accept="image/*" style="display:none">
+
+<div id="modal-mask">
+  <div id="modal">
+    <h3>标定比例尺</h3>
+    <p style="font-size:12px;color:#888;margin-bottom:10px">
+      请在图纸上点击比例尺的两端（如 0m 和 10m），然后输入这两点代表的实际距离。
+    </p>
+    <div class="row">
+      <label style="font-size:12px;white-space:nowrap">实际距离</label>
+      <input id="modal-dist" type="number" step="any" min="0.001" placeholder="例如 10">
+      <select id="modal-unit">
+        <option value="m" selected>m</option>
+        <option value="km">km</option>
+        <option value="cm">cm</option>
+        <option value="mm">mm</option>
+        <option value="ft">ft</option>
+      </select>
+    </div>
+    <div class="btns">
+      <button id="modal-cancel">取消</button>
+      <button id="modal-confirm" class="primary">确认</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ──────────────────────────────────────────
+//  状态
+// ──────────────────────────────────────────
+const state = {
+  mode: "idle",              // idle | calibrate | measure
+  img: null,
+  scale: 1,
+  offsetX: 0, offsetY: 0,
+  // 标定
+  calibP1: null,
+  calibP2: null,
+  pixelsPerUnit: null,
+  calibUnit: "m",
+  // 测量
+  measureSubMode: "line",   // "line" | "polyline"
+  polyPoints: [],            // 折线模式下的在画顶点 (图像坐标)
+  hoverPt: null,             // 折线模式下的光标悬停位置 (图像坐标)
+  measurements: [],          // [{type:"line"|"polyline", ...}]
+  walkSpeed: 5 / 3.6,        // 步行速度 m/s (默认 5 km/h)
+  // 拖拽
+  dragging: false,
+  dragStartX: 0, dragStartY: 0,
+  dragOffsetX: 0, dragOffsetY: 0,
+};
+
+// ──────────────────────────────────────────
+//  DOM refs
+// ──────────────────────────────────────────
+const canvas  = document.getElementById("canvas");
+const ctx     = canvas.getContext("2d");
+const wrap    = document.getElementById("canvas-wrap");
+const dropHint = document.getElementById("drop-hint");
+
+const btnLoad      = document.getElementById("btn-load");
+const btnCalibrate = document.getElementById("btn-calibrate");
+const btnMeasure   = document.getElementById("btn-measure");
+const btnClear     = document.getElementById("btn-clear");
+const btnResetView = document.getElementById("btn-reset-view");
+const selUnit      = document.getElementById("sel-unit");
+const ratioText    = document.getElementById("ratio-text");
+const lastDist     = document.getElementById("last-dist");
+const fileInput    = document.getElementById("file-input");
+const sidePanel    = document.getElementById("side-panel");
+const measureList  = document.getElementById("measure-list");
+
+const modeToggle   = document.getElementById("mode-toggle");
+const btnModeLine  = document.getElementById("btn-mode-line");
+const btnModePoly  = document.getElementById("btn-mode-poly");
+
+const modalMask    = document.getElementById("modal-mask");
+const modalDist    = document.getElementById("modal-dist");
+const modalUnit    = document.getElementById("modal-unit");
+const modalConfirm = document.getElementById("modal-confirm");
+const modalCancel  = document.getElementById("modal-cancel");
+
+// ──────────────────────────────────────────
+//  坐标转换
+// ──────────────────────────────────────────
+function toImgCoords(sx, sy) {
+  return {
+    x: (sx - state.offsetX) / state.scale,
+    y: (sy - state.offsetY) / state.scale,
+  };
+}
+
+function toScreenCoords(ix, iy) {
+  return {
+    x: ix * state.scale + state.offsetX,
+    y: iy * state.scale + state.offsetY,
+  };
+}
+
+function dist2D(x1, y1, x2, y2) {
+  return Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
+}
+
+// 计算一组点的累加路径长度
+function polylineLength(points) {
+  if (!points || points.length < 2) return 0;
+  let total = 0;
+  for (let i = 1; i < points.length; i++) {
+    total += dist2D(points[i-1].x, points[i-1].y, points[i].x, points[i].y);
+  }
+  return total;
+}
+
+function formatDist(pxDist) {
+  if (!state.pixelsPerUnit) return null;
+  const real = pxDist / state.pixelsPerUnit;
+  const unit = selUnit.value;
+  let v = real;
+  const conv = { m:1, km:0.001, cm:100, mm:1000, ft:3.28084 };
+  v = v * (conv[unit] || 1) / (conv[state.calibUnit] || 1);
+  if (v >= 1000 && unit === "m") return (v / 1000).toFixed(3) + " km";
+  if (v < 0.01 && v > 0) return v.toFixed(4);
+  return v.toFixed(2);
+}
+
+
+function formatTime(seconds) {
+  if (seconds <= 0) return "0 秒";
+  if (seconds < 1) return (Math.round(seconds * 10) / 10) + " 秒";
+  if (seconds < 60) return "约 " + Math.round(seconds) + " 秒";
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.round(seconds % 60);
+  if (mins < 60) return "约 " + mins + " 分 " + secs + " 秒";
+  const hrs = Math.floor(mins / 60);
+  const rmins = mins % 60;
+  return "约 " + hrs + " 时 " + rmins + " 分";
+}
+
+function formatResult(pxDist) {
+  const distStr = formatDist(pxDist);
+  if (!distStr || !state.pixelsPerUnit) return { distStr: distStr || "—", timeStr: "", fullStr: distStr || "—" };
+  let realMeters = pxDist / state.pixelsPerUnit;
+  const convToM = { m:1, km:1000, cm:0.01, mm:0.001, ft:0.3048 };
+  realMeters *= (convToM[state.calibUnit] || 1);
+  const seconds = realMeters / state.walkSpeed;
+  const timeStr = formatTime(seconds);
+  return { distStr, timeStr, fullStr: distStr + " | " + timeStr };
+}
+// ──────────────────────────────────────────
+//  渲染
+// ──────────────────────────────────────────
+function render() {
+  const w = wrap.clientWidth;
+  const h = wrap.clientHeight;
+  canvas.width = w;
+  canvas.height = h;
+
+  ctx.clearRect(0, 0, w, h);
+  if (!state.img) return;
+
+  ctx.save();
+  ctx.translate(state.offsetX, state.offsetY);
+  ctx.scale(state.scale, state.scale);
+  ctx.drawImage(state.img, 0, 0);
+
+  // ── 标定点/线 ──
+  if (state.calibP1) drawCross(state.calibP1.x, state.calibP1.y, "#00d2ff");
+  if (state.calibP2) {
+    drawCross(state.calibP2.x, state.calibP2.y, "#00d2ff");
+    ctx.beginPath();
+    ctx.moveTo(state.calibP1.x, state.calibP1.y);
+    ctx.lineTo(state.calibP2.x, state.calibP2.y);
+    ctx.strokeStyle = "#00d2ff";
+    ctx.lineWidth = 3 / state.scale;
+    ctx.setLineDash([8 / state.scale, 4 / state.scale]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // ── 折线模式：在画中的折线顶点 + 悬停预览 ──
+  if (state.mode === "measure" && state.measureSubMode === "polyline") {
+    const pts = state.polyPoints;
+    // 已确定的顶点
+    for (const p of pts) drawCross(p.x, p.y, "#f0a500");
+    // 已确定的线段
+    if (pts.length >= 2) {
+      ctx.beginPath();
+      ctx.moveTo(pts[0].x, pts[0].y);
+      for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+      ctx.strokeStyle = "#f0a500";
+      ctx.lineWidth = 3 / state.scale;
+      ctx.stroke();
+      // 各段标注累加距离
+      ctx.font = (11 / state.scale) + "px Microsoft YaHei, sans-serif";
+      ctx.fillStyle = "#f0a500";
+      let cumDist = 0;
+      for (let i = 1; i < pts.length; i++) {
+        cumDist += dist2D(pts[i-1].x, pts[i-1].y, pts[i].x, pts[i].y);
+        const mx = (pts[i-1].x + pts[i].x) / 2;
+        const my = (pts[i-1].y + pts[i].y) / 2 - 6 / state.scale;
+        ctx.fillText(formatDist(cumDist), mx, my);
+      }
+    }
+    // 悬停预览线 (末顶点 → 光标)
+    if (pts.length >= 1 && state.hoverPt) {
+      const last = pts[pts.length - 1];
+      ctx.beginPath();
+      ctx.moveTo(last.x, last.y);
+      ctx.lineTo(state.hoverPt.x, state.hoverPt.y);
+      ctx.strokeStyle = "rgba(240,165,0,0.5)";
+      ctx.lineWidth = 1.5 / state.scale;
+      ctx.setLineDash([5 / state.scale, 4 / state.scale]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+  }
+
+  // ── 直线模式：第一个点 ──
+  if (state.mode === "measure" && state.measureSubMode === "line" && state.polyPoints.length === 1) {
+    drawCross(state.polyPoints[0].x, state.polyPoints[0].y, "#e94560");
+  }
+
+  // ── 已完成的测量线 ──
+  for (const m of state.measurements) {
+    if (m.type === "polyline" && m.points.length >= 2) {
+      // 折线
+      ctx.beginPath();
+      ctx.moveTo(m.points[0].x, m.points[0].y);
+      for (let i = 1; i < m.points.length; i++) ctx.lineTo(m.points[i].x, m.points[i].y);
+      ctx.strokeStyle = "#e94560";
+      ctx.lineWidth = 2.5 / state.scale;
+      ctx.setLineDash([6 / state.scale, 3 / state.scale]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      for (const p of m.points) drawCross(p.x, p.y, "#e94560");
+    } else {
+      // 直线 (向后兼容)
+      ctx.beginPath();
+      ctx.moveTo(m.p1.x, m.p1.y);
+      ctx.lineTo(m.p2.x, m.p2.y);
+      ctx.strokeStyle = "#e94560";
+      ctx.lineWidth = 2.5 / state.scale;
+      ctx.setLineDash([6 / state.scale, 3 / state.scale]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      drawCross(m.p1.x, m.p1.y, "#e94560");
+      drawCross(m.p2.x, m.p2.y, "#e94560");
+    }
+  }
+
+  ctx.restore();
+
+  // ── 屏幕坐标标注 ──
+  // 标定线标签
+  if (state.calibP1 && state.calibP2) {
+    const s1 = toScreenCoords(state.calibP1.x, state.calibP1.y);
+    const s2 = toScreenCoords(state.calibP2.x, state.calibP2.y);
+    const mx = (s1.x + s2.x) / 2, my = (s1.y + s2.y) / 2;
+    ctx.font = "bold 12px Microsoft YaHei, sans-serif";
+    ctx.fillStyle = "#00d2ff";
+    ctx.textAlign = "center";
+    ctx.fillText("比例尺标定线", mx, my - 8);
+    ctx.fillText("像素: " + dist2D(state.calibP1.x, state.calibP1.y, state.calibP2.x, state.calibP2.y).toFixed(1) + " px", mx, my + 14);
+  }
+  // 测线标签
+  for (const m of state.measurements) {
+    let mx, my;
+    if (m.type === "polyline" && m.points.length >= 2) {
+      // 折线标注在中点
+      const mid = m.points[Math.floor(m.points.length / 2)];
+      const s = toScreenCoords(mid.x, mid.y);
+      mx = s.x; my = s.y;
+    } else {
+      const s1 = toScreenCoords(m.p1.x, m.p1.y);
+      const s2 = toScreenCoords(m.p2.x, m.p2.y);
+      mx = (s1.x + s2.x) / 2; my = (s1.y + s2.y) / 2;
+    }
+    ctx.font = "bold 11px Microsoft YaHei, sans-serif";
+    const res = formatResult(m.pxDist);
+    const txt = res.fullStr;
+    const tw = ctx.measureText(txt || "").width;
+    const py = my - 8;
+    ctx.fillStyle = "rgba(26,26,46,0.8)";
+    ctx.fillRect(mx - tw / 2 - 6, py - 14, tw + 12, 22);
+    ctx.fillStyle = "#e94560";
+    ctx.textAlign = "center";
+    ctx.fillText(txt || "", mx, py + 3);
+  }
+
+  // 折线模式在画提示
+  if (state.mode === "measure" && state.measureSubMode === "polyline" && state.polyPoints.length >= 1) {
+    ctx.font = "12px Microsoft YaHei, sans-serif";
+    ctx.fillStyle = "#f0a500";
+    ctx.textAlign = "left";
+    ctx.fillText(state.polyPoints.length + " 个顶点 | 双击或 Enter 完成 | Esc 取消", 10, wrap.clientHeight - 10);
+  }
+}
+
+function drawCross(ix, iy, color) {
+  const sz = 8 / state.scale;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2 / state.scale;
+  ctx.beginPath();
+  ctx.moveTo(ix - sz, iy); ctx.lineTo(ix + sz, iy);
+  ctx.moveTo(ix, iy - sz); ctx.lineTo(ix, iy + sz);
+  ctx.stroke();
+}
+
+// ──────────────────────────────────────────
+//  适应窗口
+// ──────────────────────────────────────────
+function fitToWindow() {
+  if (!state.img) return;
+  const w = wrap.clientWidth;
+  const h = wrap.clientHeight;
+  const iw = state.img.naturalWidth;
+  const ih = state.img.naturalHeight;
+  const s = Math.min(w / iw, h / ih, 1);
+  state.scale = s;
+  state.offsetX = (w - iw * s) / 2;
+  state.offsetY = (h - ih * s) / 2;
+  render();
+}
+
+// ──────────────────────────────────────────
+//  加载图片
+// ──────────────────────────────────────────
+function loadImage(file) {
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const img = new Image();
+    img.onload = () => {
+      state.img = img;
+      state.calibP1 = state.calibP2 = null;
+      state.polyPoints = [];
+      state.hoverPt = null;
+      state.measurements = [];
+      state.pixelsPerUnit = null;
+      state.mode = "idle";
+      dropHint.style.display = "none";
+      btnCalibrate.disabled = false;
+      btnMeasure.disabled = true;
+      btnClear.disabled = true;
+      btnResetView.disabled = false;
+      modeToggle.style.display = "none";
+      ratioText.textContent = "未标定";
+      lastDist.textContent = "—";
+      sidePanel.classList.remove("show");
+      updateBodyClass();
+      fitToWindow();
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+// ──────────────────────────────────────────
+//  模式切换
+// ──────────────────────────────────────────
+function updateBodyClass() {
+  document.body.classList.remove("calibrating", "measuring-line", "measuring-poly");
+  if (state.mode === "calibrate") {
+    document.body.classList.add("calibrating");
+  } else if (state.mode === "measure") {
+    if (state.measureSubMode === "polyline") document.body.classList.add("measuring-poly");
+    else document.body.classList.add("measuring-line");
+  }
+  btnCalibrate.classList.toggle("active", state.mode === "calibrate");
+  btnMeasure.classList.toggle("active", state.mode === "measure");
+  btnModeLine.classList.toggle("active-mode", state.measureSubMode === "line");
+  btnModePoly.classList.toggle("active-mode", state.measureSubMode === "polyline");
+}
+
+function setCalibrateMode() {
+  if (!state.img) return;
+  state.mode = "calibrate";
+  state.calibP1 = state.calibP2 = null;
+  state.polyPoints = [];
+  state.hoverPt = null;
+  updateBodyClass();
+  render();
+}
+
+function setMeasureMode() {
+  if (!state.img || !state.pixelsPerUnit) return;
+  state.mode = "measure";
+  state.polyPoints = [];
+  state.hoverPt = null;
+  modeToggle.style.display = (state.measureSubMode === "polyline") ? "flex" : "flex";
+  updateBodyClass();
+  render();
+}
+
+function finishPolyline() {
+  if (state.polyPoints.length < 2) return;
+  const pxDist = polylineLength(state.polyPoints);
+  const result = formatResult(pxDist);
+  state.measurements.push({
+    type: "polyline",
+    points: state.polyPoints.slice(),
+    pxDist: pxDist,
+    label: result.fullStr,
+  });
+  state.polyPoints = [];
+  state.hoverPt = null;
+  lastDist.textContent = result.fullStr;
+  updateMeasureList();
+  btnClear.disabled = false;
+  sidePanel.classList.add("show");
+  // 测完后回到 idle，保持测距模式以便继续
+  state.mode = "measure";
+  updateBodyClass();
+  render();
+}
+
+function finishLineMeasure() {
+  if (state.polyPoints.length < 2) return;
+  const p1 = state.polyPoints[0], p2 = state.polyPoints[1];
+  const pxDist = dist2D(p1.x, p1.y, p2.x, p2.y);
+  const result = formatResult(pxDist);
+  state.measurements.push({
+    type: "line",
+    p1: p1, p2: p2,
+    pxDist: pxDist,
+    label: result.fullStr,
+  });
+  state.polyPoints = [];
+  lastDist.textContent = result.fullStr;
+  updateMeasureList();
+  btnClear.disabled = false;
+  sidePanel.classList.add("show");
+  state.mode = "measure";
+  updateBodyClass();
+  render();
+}
+
+// ──────────────────────────────────────────
+//  画布交互
+// ──────────────────────────────────────────
+canvas.addEventListener("click", (e) => {
+  const rect = canvas.getBoundingClientRect();
+  const sx = e.clientX - rect.left, sy = e.clientY - rect.top;
+  const pt = toImgCoords(sx, sy);
+
+  if (state.mode === "calibrate") {
+    if (!state.calibP1) {
+      state.calibP1 = pt;
+      render();
+    } else if (!state.calibP2) {
+      state.calibP2 = pt;
+      render();
+      const pxDist = dist2D(state.calibP1.x, state.calibP1.y, state.calibP2.x, state.calibP2.y);
+      modalDist.value = "";
+      modalUnit.value = selUnit.value;
+      modalMask.classList.add("show");
+      modalDist.dataset.px = pxDist;
+      modalDist.focus();
+    }
+  } else if (state.mode === "measure") {
+    if (state.measureSubMode === "polyline") {
+      // 折线模式：每次点击添加顶点
+      state.polyPoints.push(pt);
+      render();
+    } else {
+      // 直线模式
+      if (state.polyPoints.length === 0) {
+        state.polyPoints.push(pt);
+        render();
+      } else {
+        state.polyPoints.push(pt);
+        finishLineMeasure();
+      }
+    }
+  } else {
+    if (state.pixelsPerUnit) setMeasureMode();
+  }
+});
+
+// 双击完成折线
+canvas.addEventListener("dblclick", (e) => {
+  if (state.mode === "measure" && state.measureSubMode === "polyline" && state.polyPoints.length >= 2) {
+    e.preventDefault();
+    finishPolyline();
+  }
+});
+
+// 缩放 (滚轮)
+canvas.addEventListener("wheel", (e) => {
+  e.preventDefault();
+  if (!state.img) return;
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+  const ptBefore = toImgCoords(mx, my);
+  const factor = e.deltaY < 0 ? 1.1 : 0.9;
+  const newScale = Math.max(0.1, Math.min(20, state.scale * factor));
+  state.scale = newScale;
+  state.offsetX = mx - ptBefore.x * state.scale;
+  state.offsetY = my - ptBefore.y * state.scale;
+  render();
+});
+
+// 拖拽平移
+canvas.addEventListener("mousedown", (e) => {
+  if (e.button === 2 || (e.button === 0 && state.mode === "idle")) {
+    e.preventDefault();
+    state.dragging = true;
+    state.dragStartX = e.clientX;
+    state.dragStartY = e.clientY;
+    state.dragOffsetX = state.offsetX;
+    state.dragOffsetY = state.offsetY;
+  }
+});
+
+canvas.addEventListener("contextmenu", (e) => e.preventDefault());
+
+window.addEventListener("mousemove", (e) => {
+  if (state.dragging) {
+    state.offsetX = state.dragOffsetX + (e.clientX - state.dragStartX);
+    state.offsetY = state.dragOffsetY + (e.clientY - state.dragStartY);
+    render();
+    return;
+  }
+  // 折线模式悬停预览
+  if (state.mode === "measure" && state.measureSubMode === "polyline" && state.polyPoints.length >= 1) {
+    const rect = canvas.getBoundingClientRect();
+    const sx = e.clientX - rect.left, sy = e.clientY - rect.top;
+    state.hoverPt = toImgCoords(sx, sy);
+    render();
+  }
+});
+
+window.addEventListener("mouseup", () => { state.dragging = false; });
+
+// ──────────────────────────────────────────
+//  模态框
+// ──────────────────────────────────────────
+modalConfirm.addEventListener("click", () => {
+  const val = parseFloat(modalDist.value);
+  if (!val || val <= 0) { modalDist.focus(); return; }
+  const px = parseFloat(modalDist.dataset.px);
+  state.pixelsPerUnit = px / val;
+  state.calibUnit = modalUnit.value;
+  selUnit.value = modalUnit.value;
+  ratioText.textContent = "1 px = " + (val / px).toFixed(4) + " " + modalUnit.value;
+  btnMeasure.disabled = false;
+  btnClear.disabled = state.measurements.length > 0;
+  modeToggle.style.display = "flex";
+  modalMask.classList.remove("show");
+  state.mode = "idle";
+  updateBodyClass();
+  render();
+});
+
+modalCancel.addEventListener("click", () => {
+  modalMask.classList.remove("show");
+  state.calibP1 = state.calibP2 = null;
+  state.mode = "idle";
+  updateBodyClass();
+  render();
+});
+
+modalDist.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") modalConfirm.click();
+  if (e.key === "Escape") modalCancel.click();
+});
+
+// ──────────────────────────────────────────
+//  测量记录列表
+// ──────────────────────────────────────────
+function updateMeasureList() {
+  measureList.innerHTML = "";
+  state.measurements.forEach((m, i) => {
+    const div = document.createElement("div");
+    div.className = "item";
+    let label = "测线 " + (i + 1);
+    if (m.type === "polyline") {
+      label += "<span class='badge'>" + m.points.length + "顶点</span>";
+    }
+    div.innerHTML = "<span>" + label + "</span><span class='val'>" + m.label + "</span><span class='del' data-idx='" + i + "'>✕</span>";
+    measureList.appendChild(div);
+  });
+}
+
+measureList.addEventListener("click", (e) => {
+  if (e.target.classList.contains("del")) {
+    const idx = parseInt(e.target.dataset.idx);
+    state.measurements.splice(idx, 1);
+    if (state.measurements.length === 0) {
+      sidePanel.classList.remove("show");
+      btnClear.disabled = true;
+      lastDist.textContent = "—";
+    } else {
+      lastDist.textContent = state.measurements[state.measurements.length - 1].label;
+    }
+    updateMeasureList();
+    render();
+  }
+});
+
+// ──────────────────────────────────────────
+//  模式切换按钮
+// ──────────────────────────────────────────
+btnModeLine.addEventListener("click", () => {
+  state.measureSubMode = "line";
+  state.polyPoints = [];
+  state.hoverPt = null;
+  updateBodyClass();
+  render();
+});
+
+btnModePoly.addEventListener("click", () => {
+  state.measureSubMode = "polyline";
+  state.polyPoints = [];
+  state.hoverPt = null;
+  updateBodyClass();
+  render();
+});
+
+// ──────────────────────────────────────────
+//  工具栏按钮
+// ──────────────────────────────────────────
+btnLoad.addEventListener("click", () => fileInput.click());
+fileInput.addEventListener("change", (e) => { if (e.target.files[0]) loadImage(e.target.files[0]); });
+
+btnCalibrate.addEventListener("click", setCalibrateMode);
+btnMeasure.addEventListener("click", setMeasureMode);
+
+btnClear.addEventListener("click", () => {
+  state.measurements = [];
+  state.polyPoints = [];
+  state.hoverPt = null;
+  sidePanel.classList.remove("show");
+  btnClear.disabled = true;
+  lastDist.textContent = "—";
+  measureList.innerHTML = "";
+  render();
+});
+
+btnResetView.addEventListener("click", fitToWindow);
+
+// ──────────────────────────────────────────
+//  步速变化
+// ──────────────────────────────────────────
+const walkSpeedInput = document.getElementById("walk-speed");
+walkSpeedInput.addEventListener("input", () => {
+  let v = parseFloat(walkSpeedInput.value);
+  if (!v || v <= 0) return;
+  state.walkSpeed = v / 3.6;
+  state.measurements.forEach(m => { m.label = formatResult(m.pxDist).fullStr; });
+  if (state.measurements.length > 0) lastDist.textContent = state.measurements[state.measurements.length - 1].label;
+  updateMeasureList();
+  render();
+});
+walkSpeedInput.addEventListener("change", () => {
+  let v = parseFloat(document.getElementById("walk-speed").value);
+  if (!v || v <= 0) { v = 5; document.getElementById("walk-speed").value = 5; }
+  state.walkSpeed = v / 3.6;
+  state.measurements.forEach(m => {
+    m.label = formatResult(m.pxDist).fullStr;
+  });
+  if (state.measurements.length > 0) {
+    lastDist.textContent = state.measurements[state.measurements.length - 1].label;
+  }
+  updateMeasureList();
+  render();
+});
+
+selUnit.addEventListener("change", () => {
+  state.measurements.forEach(m => {
+    m.label = formatResult(m.pxDist).fullStr;
+  });
+  if (state.measurements.length > 0) {
+    lastDist.textContent = state.measurements[state.measurements.length - 1].label;
+  }
+  updateMeasureList();
+  render();
+});
+
+// ──────────────────────────────────────────
+//  拖放加载
+// ──────────────────────────────────────────
+wrap.addEventListener("dragover", (e) => { e.preventDefault(); });
+wrap.addEventListener("drop", (e) => {
+  e.preventDefault();
+  const file = e.dataTransfer.files[0];
+  if (file && file.type.startsWith("image/")) loadImage(file);
+});
+
+// ──────────────────────────────────────────
+//  窗口大小变化
+// ──────────────────────────────────────────
+window.addEventListener("resize", () => {
+  if (state.img) render();
+});
+
+// ──────────────────────────────────────────
+//  键盘快捷键
+// ──────────────────────────────────────────
+window.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && state.mode === "measure" && state.measureSubMode === "polyline" && state.polyPoints.length >= 2) {
+    e.preventDefault();
+    finishPolyline();
+    return;
+  }
+  if (e.key === "Escape") {
+    state.mode = "idle";
+    state.calibP1 = state.calibP2 = null;
+    state.polyPoints = [];
+    state.hoverPt = null;
+    updateBodyClass();
+    render();
+  }
+  if (e.key === "c" && !e.ctrlKey && !e.metaKey && state.img) setCalibrateMode();
+  if (e.key === "m" && !e.ctrlKey && !e.metaKey && state.pixelsPerUnit) setMeasureMode();
+  if (e.key === "f" && !e.ctrlKey && !e.metaKey && state.img) fitToWindow();
+  if (e.key === "z" && !e.ctrlKey && !e.metaKey && state.mode === "measure") {
+    // Ctrl+Z style undo last vertex in polyline
+    if (state.measureSubMode === "polyline" && state.polyPoints.length > 0) {
+      state.polyPoints.pop();
+      render();
+    }
+  }
+});
+
+render();
+</script>
+</body>
+</html>
